@@ -32,6 +32,7 @@ async function main() {
 
     const result = await postgrator.migrate();
     if (result.length === 0) {
+      console.log(postgrator)
       console.log("No new migration file detected")
     } else {
       console.log('Migration succeeded!')
