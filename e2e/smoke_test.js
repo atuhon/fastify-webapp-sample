@@ -1,10 +1,4 @@
 SuiteOf('smoke');
-
-Scenario('test something',  ({ I }) => {
-    I.amOnPage("/");
-
-
-});
 Scenario('test something',  ({ I }) => {
 
 I.amOnPage("/");
