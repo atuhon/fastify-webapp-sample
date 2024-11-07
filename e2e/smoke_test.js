@@ -9,8 +9,8 @@ Scenario('test something',  ({ I }) => {
 });
 Scenario('test something',  ({ I }) => {
 
-I.amOnPage("http://localhost:8080/login")
-I.fillField("パスワード","super-strong-passphrase")
-I.fillField("ユーザー名","user1")
-I.click("ログイン")
+I.amOnPage("/");
+I.fillField("パスワード","super-strong-passphrase");
+I.fillField("ユーザー名","user1");
+I.click("ログイン");
 });
