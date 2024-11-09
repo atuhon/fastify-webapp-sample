@@ -1,6 +1,6 @@
 export default async function itemRoutes(server, options) {
   const { passport } = options;
-  //item2
+  //item3
   server.get("/items", async (request, reply) => {
     const client = await server.pg.connect();
     let result;
