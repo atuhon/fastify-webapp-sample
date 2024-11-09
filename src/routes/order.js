@@ -1,9 +1,8 @@
 export default async function orderRoutes(server, options) {
-
   const order = async (client, fullname, tel, receiveTime, user_id) => {
     const { rows } = await client.query(
       "INSERT INTO orders (customer_name, customer_tel, customer_receive_time, user_id) VALUES ($1, $2, $3, $4) RETURNING id",
-      [fullname, tel, receiveTime, user_id]
+      [fullname, tel, receiveTime, user_id],
     );
     return rows[0].id;
   };
@@ -25,7 +24,7 @@ export default async function orderRoutes(server, options) {
     const itemIds = Object.keys(orderedItems);
     const { rows } = await client.query(
       "SELECT id, name, price, default_inventory FROM items WHERE id = ANY($1::int[])",
-      [itemIds]
+      [itemIds],
     );
 
     // concatenate queried item and quantity
@@ -34,7 +33,7 @@ export default async function orderRoutes(server, options) {
       name: row.name,
       quantity: orderedItems[row.id],
       price: row.price,
-      default_inventory: row.default_inventory
+      default_inventory: row.default_inventory,
     }));
   };
 
@@ -59,7 +58,7 @@ export default async function orderRoutes(server, options) {
         AND orders.id = order_items.order_id
         AND items.id = order_items.item_id
       `,
-      [user_id]
+      [user_id],
     );
 
     /**
@@ -84,7 +83,7 @@ export default async function orderRoutes(server, options) {
      */
     return rows.reduce((orders, item) => {
       const index = orders.findIndex(
-        (order) => (order.order_id == item.order_id)
+        (order) => order.order_id == item.order_id,
       );
       if (index >= 0) {
         orders[index].items.push(item);
@@ -122,7 +121,7 @@ export default async function orderRoutes(server, options) {
       WHERE
         orders.id = order_items.order_id
         AND items.id = order_items.item_id
-      `
+      `,
     );
 
     /**
@@ -147,7 +146,7 @@ export default async function orderRoutes(server, options) {
      */
     return rows.reduce((orders, item) => {
       const index = orders.findIndex(
-        (order) => (order.order_id == item.order_id)
+        (order) => order.order_id == item.order_id,
       );
       if (index >= 0) {
         orders[index].items.push(item);
@@ -168,22 +167,24 @@ export default async function orderRoutes(server, options) {
 
   const recieveOrder = async (orderId) => {
     const client = await server.pg.connect();
-    await client.query("UPDATE orders SET done=true WHERE id= $1", [orderId])
+    await client.query("UPDATE orders SET done=true WHERE id= $1", [orderId]);
     client.release();
-  }
+  };
 
   const validate = (params, targets) => {
     return targets.reduce((carry, target) => {
-      if (!params[target]) carry.push(target)
-      return carry
-    }, [])
-  }
+      if (!params[target]) carry.push(target);
+      return carry;
+    }, []);
+  };
 
   server.get("/order", async (request, reply) => {
     const items = request.session.items;
-    const client = await server.pg.connect()
-    const orderedItems = items ? await getOrderedItems(client, items) : undefined
-    client.release()
+    const client = await server.pg.connect();
+    const orderedItems = items
+      ? await getOrderedItems(client, items)
+      : undefined;
+    client.release();
 
     await reply.view("/src/views/order.ejs", {
       items: orderedItems,
@@ -192,43 +193,45 @@ export default async function orderRoutes(server, options) {
     });
   });
 
-
   server.post("/order", async (request, reply) => {
     const items = request.session.items;
     const { fullname, tel, receiveTime, orderDate } = request.body;
 
-    const validationTarget = [
-      'fullname',
-      'tel',
-      'receiveTime',
-      'orderDate',
-    ]
+    const validationTarget = ["fullname", "tel", "receiveTime", "orderDate"];
 
-    const missing = validate(request.body, validationTarget)
+    const missing = validate(request.body, validationTarget);
 
     if (missing.length !== 0) {
-      return await reply.redirect(302, `order?missing=${missing}&fullname=${fullname}&tel=${tel}&receiveTime=${receiveTime}&orderDate=${orderDate}`)
+      return await reply.redirect(
+        302,
+        `order?missing=${missing}&fullname=${fullname}&tel=${tel}&receiveTime=${receiveTime}&orderDate=${orderDate}`,
+      );
     }
 
     const client = await server.pg.connect();
 
     // begin transaction
-    await client.query('BEGIN');
-    await client.query('LOCK TABLE orders, inventories')
+    await client.query("BEGIN");
+    await client.query("LOCK TABLE orders, inventories");
 
-    const orderId = await order(client, fullname, tel, receiveTime, request?.user?.id);
+    const orderId = await order(
+      client,
+      fullname,
+      tel,
+      receiveTime,
+      request?.user?.id,
+    );
     const orderedItems = await getOrderedItems(client, items);
 
     for (const itemId in items) {
       const quantity = Number(items[itemId]);
 
-      const item = orderedItems.find(i => i.id == itemId)
-
+      const item = orderedItems.find((i) => i.id == itemId);
 
       // Create new order
       await client.query(
         "INSERT INTO order_items (order_id, item_id, quantity) VALUES ($1, $2, $3)",
-        [orderId, Number(itemId), quantity]
+        [orderId, Number(itemId), quantity],
       );
 
       // Check the default inventory of the item
@@ -239,33 +242,38 @@ export default async function orderRoutes(server, options) {
 
       // Only when no inventory item in the inventories table it creates a record. Otherwise, it update the inventory
       let { rows } = await client.query(
-        "INSERT INTO inventories (item_id, inventory, order_date) VALUES ($1, $2, $3) ON CONFLICT (item_id, order_date) DO UPDATE SET inventory = inventories.inventory - $4 RETURNING inventories.inventory", [Number(itemId), Number(item.default_inventory) - quantity, orderDate, quantity]
-      )
+        "INSERT INTO inventories (item_id, inventory, order_date) VALUES ($1, $2, $3) ON CONFLICT (item_id, order_date) DO UPDATE SET inventory = inventories.inventory - $4 RETURNING inventories.inventory",
+        [
+          Number(itemId),
+          Number(item.default_inventory) - quantity,
+          orderDate,
+          quantity,
+        ],
+      );
 
       // If the updated inventory is less than 0, store can't sell it. Rollback
-      const inventory = rows[0].inventory
+      const inventory = rows[0].inventory;
 
       if (inventory < 0) {
-        await client.query('ROLLBACK')
+        await client.query("ROLLBACK");
         const items = await client.query(
           "SELECT name FROM items WHERE id = $1",
-          [Number(itemId)]
+          [Number(itemId)],
         );
-        const itemName = items.rows[0].name
-        return await reply.send(`商品 ${itemName} の在庫が足りませんでした`)
+        const itemName = items.rows[0].name;
+        return await reply.send(`商品 ${itemName} の在庫が足りませんでした`);
       }
-
     }
-    await client.query('COMMIT')
+    await client.query("COMMIT");
 
-    client.release()
+    client.release();
 
     // flush items in session
     request.session.items = {};
 
     const totalPrice = orderedItems.reduce(
       (total, orderedItem) => total + orderedItem.price * orderedItem.quantity,
-      0
+      0,
     );
 
     await reply.view("/src/views/orderComplete.ejs", {
@@ -276,66 +284,67 @@ export default async function orderRoutes(server, options) {
     });
   });
 
-  server.get('/order/history', async (request, reply) => {
+  server.get("/order/history", async (request, reply) => {
     const client = await server.pg.connect();
-    const { user_id } = request.query
+    const { user_id } = request.query;
 
     // if user id is not matched with the current user and the user is not admin, it will redirect to the order
     if (user_id != request.user.id && !request.user.isAdmin) {
-      return reply.redirect(302, '/order')
+      return reply.redirect(302, "/order");
     }
 
-    const { rows } = await client.query('SELECT id FROM users WHERE id = $1', [user_id])
+    const { rows } = await client.query("SELECT id FROM users WHERE id = $1", [
+      user_id,
+    ]);
     if (rows.length === 0) {
-      return reply.redirect(302, '/order')
+      return reply.redirect(302, "/order");
     }
-    client.release()
+    client.release();
 
-    const orders = await getOrdersByUserId(user_id)
+    const orders = await getOrdersByUserId(user_id);
 
     await reply.view("src/views/orderHistory.ejs", {
       orders,
       user: request.user,
     });
-  })
+  });
 
-  server.get('/order/manage', async (request, reply) => {
+  server.get("/order/manage", async (request, reply) => {
     // if user_id is not specified and the current user is an admin, it will show all histories
     if (!request.user.isAdmin) {
-      return reply.redirect(302, '/order')
+      return reply.redirect(302, "/order");
     }
     const orders = await getOrders();
     return reply.view("src/views/orderManage.ejs", {
       orders,
       user: request.user,
     });
-  })
+  });
 
-  server.post('/order/:order_id/receive', async(request, reply) => {
-    const { order_id } = request.params
+  server.post("/order/:order_id/receive", async (request, reply) => {
+    const { order_id } = request.params;
     if (!request.user.isAdmin) {
-      return reply.redirect(302, '/order')
+      return reply.redirect(302, "/order");
     }
 
     await recieveOrder(order_id);
 
-    return reply.redirect("/order/manage")
-  })
+    return reply.redirect("/order/manage");
+  });
 
   server.post("/order/delete-item", (request, reply) => {
-    const { item_id } = request.body
+    const { item_id } = request.body;
     if (item_id) {
-      delete request.session.items[item_id]
+      delete request.session.items[item_id];
     }
-    return reply.redirect(302, "/order")
-  })
+    return reply.redirect(302, "/order");
+  });
 
   server.post("/order/update-item", (request, reply) => {
-    const { item_id, quantity } = request.body
+    const { item_id, quantity } = request.body;
     if (item_id) {
-      request.session.items[item_id] = quantity
+      request.session.items[item_id] = quantity;
     }
-    return reply.redirect(302, "/order")
-  })
+    return reply.redirect(302, "/order");
+  });
 }
-

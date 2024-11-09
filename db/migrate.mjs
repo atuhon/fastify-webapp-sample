@@ -2,9 +2,9 @@ import Postgrator from "postgrator";
 import pg from "pg";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
-import * as dotenv from "dotenv"
+import * as dotenv from "dotenv";
 
-dotenv.config()
+dotenv.config();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function main() {
@@ -32,10 +32,10 @@ async function main() {
 
     const result = await postgrator.migrate();
     if (result.length === 0) {
-      console.log(postgrator)
-      console.log("No new migration file detected")
+      console.log(postgrator);
+      console.log("No new migration file detected");
     } else {
-      console.log('Migration succeeded!')
+      console.log("Migration succeeded!");
     }
   } catch (error) {
     // If error happened partially through migrations,
