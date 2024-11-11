@@ -44,7 +44,7 @@ server.get("/", (request, reply) => {
 });
 
 server.listen(
-  { host: "localhost", port: process.env.PORT || 8080 },
+  { host: "0.0.0.0", port: process.env.PORT || 8080 },
   (err, address) => {
     if (err) {
       console.error(err);
