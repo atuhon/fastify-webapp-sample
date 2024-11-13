@@ -20,7 +20,7 @@ exports.config = {
   },
   include: {
     I: "./steps_file.js",
-    utils:"./utils"       //使用するライブラリの格納
+    utils: "./utils", //使用するライブラリの格納
   },
   translation: "en-US",
   vocabularies: ["./vca.json"],
